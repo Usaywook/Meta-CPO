@@ -1,12 +1,12 @@
-# Meta-Constrained Policy Optimization (Meta-CPO) for Safe and Fast Adaptation for Nonstationary Domains. 
-This repository is an adaptation of the [CPO algorithm](https://proceedings.mlr.press/v70/achiam17a/achiam17a.pdf), transforming it into a Meta-learning framework. The modification involves leveraging Differentiable Convex Programming to facilitate the relaxation of gradient computations between parameters. The integration of CPO into the meta-learning framework was achieved through the application of the model-free meta-framework introduced by [MAML](https://proceedings.mlr.press/v70/finn17a/finn17a.pdf). The primary objective of this algorithm is to undergo testing within the [Safety Gymnasium](https://github.com/PKU-Alignment/safety-gymnasium), offering an intuitive experimental platform to showcase its effectiveness in the context of Autonomous Driving tasks. For a detailed theory about achieving safety guarantee, please refer to our paper [Constrained Meta-RL with DCO](https://arxiv.org/pdf/2312.10230.pdf) 
+# Meta-Constrained Policy Optimization (Meta-CPO) for Safe and Fast Adaptation for Nonstationary Domains.
+This repository is an adaptation of the [CPO algorithm](https://proceedings.mlr.press/v70/achiam17a/achiam17a.pdf), transforming it into a Meta-learning framework. The modification involves leveraging Differentiable Convex Programming to facilitate the relaxation of gradient computations between parameters. The integration of CPO into the meta-learning framework was achieved through the application of the model-free meta-framework introduced by [MAML](https://proceedings.mlr.press/v70/finn17a/finn17a.pdf). The primary objective of this algorithm is to undergo testing within the [Safety Gymnasium](https://github.com/PKU-Alignment/safety-gymnasium), offering an intuitive experimental platform to showcase its effectiveness in the context of Autonomous Driving tasks. For a detailed theory about achieving safety guarantee, please refer to our paper [Constrained Meta-RL with DCO](https://arxiv.org/pdf/2312.10230.pdf)
 
 --------------------------------------------------------------------------------
 
 ## Pre-requisites
 - [Constrained Policy Optimization](https://proceedings.mlr.press/v70/achiam17a/achiam17a.pdf) For constrained optimization..
 - [Model-Agnostic Meta-Learning](https://proceedings.mlr.press/v70/finn17a/finn17a.pdf) For model-free meta-learning framework..
-- [Safety Gymnasium](https://github.com/PKU-Alignment/safety-gymnasium) For experiments... 
+- [Safety Gymnasium](https://github.com/PKU-Alignment/safety-gymnasium) For experiments...
 - [Differentiable Convex Programming](https://locuslab.github.io/2019-10-28-cvxpylayers/) To enable efficient gradient computations between meta and local parameters
 
 
@@ -26,7 +26,10 @@ pip install -r requirements.txt
 In the code, we have already implemented testing domains within the safety_gymnasium folder specifically for the ```Button``` and ```Circle``` tasks to evaluate adaptive performance (it is in ```safety_gymnasium/tasks/safe_navigation/```). If one wishes to evaluate and replicate in different environmental settings, they will need to implement their own custom environments and refer to the details in the **Custom Environment** section below. To conduct experiments, choose any desired agent and set the environment as either ```Safety[Agent]Stcircle``` or ```Safety[Agent]Stbutton``` by specifying the env_name in utils/apr_parse.py. Then, execute the following command with appropriate hyperparameter settings:
 
 ```
-python3 main.py
+python main.py --env-name SafetyPointStcircle
+python main.py --env-name SafetyCarStcircle
+python main.py --env-name SafetyPointStbutton
+
 ```
 ## Note
 The following error may arise
@@ -59,7 +62,7 @@ If you find Meta-CPO useful and informative, please cite it in your publications
 ## Simulation
 
 
-https://github.com/Mgineer117/Meta-CPO/assets/117319319/bd3a751c-ce76-45e9-a7d1-881e6c0ec172 
+https://github.com/Mgineer117/Meta-CPO/assets/117319319/bd3a751c-ce76-45e9-a7d1-881e6c0ec172
 
 https://github.com/Mgineer117/Meta-CPO/assets/117319319/37199162-8561-4190-9063-14cef7c3f206
 
@@ -68,5 +71,3 @@ https://github.com/Mgineer117/Meta-CPO/assets/117319319/ea699d99-255c-441d-b98d-
 ## Code Reference
 * [Khrylx/PyTorch-RL](https://github.com/Khrylx/PyTorch-RL)
 * [SapanaChaudhary/PyTorch-CPO](https://github.com/SapanaChaudhary/PyTorch-CPO)
-
-

@@ -35,7 +35,7 @@ def main_loop():
     args.dtype = torch.float64
     torch.set_default_dtype(args.dtype)
 
-    args.device = select_device()
+    args.device = select_device(args.gpu_index)
 
     """environment"""
     envs = create_envs(args)
@@ -49,8 +49,7 @@ def main_loop():
     running_state = ZFilter((state_dim,), clip=5)
 
     """seeding"""
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    set_seed_everywhere(args.seed, torch.cuda.is_available() and args.gpu_index is not None)
 
     """create all the paths to save learned models/data"""
     save_info_obj = save_info(

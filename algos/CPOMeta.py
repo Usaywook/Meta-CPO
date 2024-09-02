@@ -396,8 +396,8 @@ class CPOMeta:
         )
 
         """Update Critic"""
-        r_optim = torch.optim.LBFGS(self.value_net.parameters(), lr=1e-4, max_iter=20)
-        c_optim = torch.optim.LBFGS(self.cost_net.parameters(), lr=1e-4, max_iter=20)
+        r_optim = torch.optim.LBFGS(self.value_net.parameters(), lr=self.args.learning_rate, max_iter=20)
+        c_optim = torch.optim.LBFGS(self.cost_net.parameters(), lr=self.args.learning_rate, max_iter=20)
 
         get_value_loss = torch.nn.MSELoss()
 

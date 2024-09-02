@@ -1,4 +1,8 @@
+import random
 from os import path
+
+import torch
+import numpy as np
 import safety_gymnasium as gym
 
 def hline():
@@ -23,11 +27,25 @@ def create_envs(args):
             print('Test Environement generated... with parameters:')
             hline()
             env = gym.make(args.env_name + str(2) + '-v0')
-            
-        
+
+
         envs.append(env)
-    
+
     return envs
+
 def assets_dir():
     return path.abspath(path.join(path.dirname(path.abspath(__file__)), '../assets'))
 
+def set_seed_everywhere(seed, using_cuda=False):
+    # Seed python RNG
+    random.seed(seed)
+    # Seed numpy RNG
+    np.random.seed(seed)
+    # seed the RNG for all devices (both CPU and CUDA)
+    torch.manual_seed(seed)
+
+    if using_cuda and torch.cuda.is_available():
+        # Deterministic operations for CuDNN, it may impact performances
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
