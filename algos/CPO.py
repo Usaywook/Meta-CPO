@@ -203,7 +203,7 @@ class CPO:
 
         self.loss_fn = torch.nn.MSELoss()
         # value network is usually set higher lr than policy since it is a bottleneck in learning
-        if args.bfgs_iter_num is not None:
+        if args.bfgs_iter_num == -1:
             self.value_optimizer = torch.optim.LBFGS(self.value_net.parameters(), lr=args.critic_lr, max_iter=args.bfgs_iter_num)
             self.cost_optimizer = torch.optim.LBFGS(self.cost_net.parameters(), lr=args.critic_lr, max_iter=args.bfgs_iter_num)
         else:

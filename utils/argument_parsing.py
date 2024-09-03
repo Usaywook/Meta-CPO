@@ -31,7 +31,7 @@ def parse_all_arguments():
                         help='discount factor (default: 0.99)')
     parser.add_argument('--tau', type=float, default=0.95, metavar='G',
                         help='gae (default: 0.95)')
-    parser.add_argument('--l2-reg', type=float, default=1e-5, metavar='G',
+    parser.add_argument('--l2-reg', type=float, default=1e-4, metavar='G',
                         help='l2 regularization of value function (default: 1e-4)')
     parser.add_argument('--bfgs-iter-num', type=int, default=10, metavar='G',
                         help='if it is set to None, Adam is used (default: 10)')

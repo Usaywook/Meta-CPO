@@ -237,7 +237,7 @@ class CPOMeta:
 
         self.loss_fn = torch.nn.MSELoss()
         # value network is usually set higher lr than policy since it is a bottleneck in learning
-        if args.bfgs_iter_num is not None:
+        if args.bfgs_iter_num == -1:
             self.value_optimizer = torch.optim.LBFGS(self.value_net.parameters(), lr=args.critic_lr, max_iter=args.bfgs_iter_num)
             self.cost_optimizer = torch.optim.LBFGS(self.cost_net.parameters(), lr=args.critic_lr, max_iter=args.bfgs_iter_num)
         else:
@@ -541,7 +541,10 @@ class CPOMeta:
         if self.args.anneal:
             self.args.max_constraint -= self.args.annealing_factor * self.args.max_constraint
 
-        return meta_correction, {"reward_value_loss":reward_value_loss.item(), "cost_value_loss":cost_value_loss.item()}
+        return meta_correction, {"reward_value_loss":reward_value_loss.item(),
+                                 "cost_value_loss":cost_value_loss.item(),
+                                 "estimated_constraint": constraint_value[0].item(),
+                                 "max_constraint": self.args.max_constraint,}
 
     def project_step(self, batch, meta_step):
         ''''
