@@ -1,11 +1,11 @@
-from torch.optim import LBFGS
-import torch.nn as nn
-import cvxpy as cp
-from cvxpylayers.torch import CvxpyLayer
 import numpy as np
-import multiprocessing
 import math
 import time
+import scipy
+import torch.nn as nn
+import multiprocessing
+import cvxpy as cp
+from cvxpylayers.torch import CvxpyLayer
 
 from utils.tools import *
 from utils.torch import *
@@ -208,7 +208,6 @@ class CPOMeta:
         args,
         mean_action=False,
         running_state=None,
-        num_threads=1,
     ):
         self.envs = envs
         self.state_dim = envs[0].observation_space.shape[0]
@@ -237,16 +236,17 @@ class CPOMeta:
 
         self.loss_fn = torch.nn.MSELoss()
         # value network is usually set higher lr than policy since it is a bottleneck in learning
-        if args.bfgs_iter_num == -1:
-            self.value_optimizer = torch.optim.LBFGS(self.value_net.parameters(), lr=args.critic_lr, max_iter=args.bfgs_iter_num)
-            self.cost_optimizer = torch.optim.LBFGS(self.cost_net.parameters(), lr=args.critic_lr, max_iter=args.bfgs_iter_num)
+        if args.bfgs_iter_num is not None:
+            print("BFGS is used!")
+            # Scipy BFGS is used since it computes optimal step automatically
         else:
+            print("Adam is used!")
             self.value_optimizer = torch.optim.Adam(self.value_net.parameters(), lr=args.critic_lr)
             self.cost_optimizer = torch.optim.Adam(self.cost_net.parameters(), lr=args.critic_lr)
 
         torch.set_num_threads(1)  # to prevent CPU overscryption
 
-    def meta_line_search(self, x, batch, fullstep, max_backtracks=20, accept_ratio=0.1):
+    def meta_line_search(self, x, batch, fullstep, max_backtracks=20):
         '''
         Backtracking linesearch for meta update
         '''
@@ -314,11 +314,37 @@ class CPOMeta:
 
             if (
                 torch.norm(stepfrac * fullstep) <= self.args.max_kl
-                and actual_cost_improve > 0
+                and actual_cost_improve > 0 and actual_cost_improve > 0
             ):
-                return True, x_new, stepfrac * fullstep
+                return True, x_new
 
-        return False, x, torch.zeros(fullstep.numel()).to(self.device)
+        return False, x
+    
+    def line_search(self, model, reward_f, cost_f, x, fullstep, expected_reward_improve_full, expected_cost_improve_full, max_backtracks=10, accept_ratio=0.1):
+        '''
+        Backtracking linesearch for meta update
+        '''
+        reward_fval = reward_f(True).item()
+        cost_fval = cost_f(True).item()
+
+        for stepfrac in [.5**x for x in range(max_backtracks)]:
+            x_new = x + stepfrac * fullstep
+            set_flat_params_to(model, x_new)
+
+            reward_fval_new = reward_f(True).item()
+            cost_fval_new = cost_f(True).item()
+
+            actual_reward_improve = reward_fval - reward_fval_new  
+            actual_cost_improve = cost_fval - cost_fval_new
+
+            expected_reward_improve = expected_reward_improve_full * stepfrac
+            expected_cost_improve = expected_cost_improve_full * stepfrac
+
+            r_ratio = actual_reward_improve / expected_reward_improve
+            c_ratio = actual_cost_improve / expected_cost_improve
+            if torch.norm(stepfrac * fullstep) <= self.args.max_kl and r_ratio > accept_ratio and c_ratio > accept_ratio:
+                return True, x_new
+        return False, x
 
     def collect_samples(self, env, policy, seed):
         t_start = time.time()
@@ -424,19 +450,25 @@ class CPOMeta:
         cost_value_loss = self.loss_fn(cost_values, cost_returns)
 
         if self.args.bfgs_iter_num is not None:
-            def r_closure():
-                self.value_optimizer.zero_grad()
+
+            def r_closure(flat_params):
+                set_flat_params_to(self.value_net, torch.tensor(flat_params))
+                for param in self.value_net.parameters():
+                    if param.grad is not None:
+                        param.grad.data.fill_(0)
                 r_pred = self.value_net(states)
                 v_loss = self.loss_fn(r_pred, returns)
                 for param in self.value_net.parameters():
                     v_loss += param.pow(2).sum() * self.args.l2_reg
                 v_loss.backward()
-                # gradient clipping for stability
                 torch.nn.utils.clip_grad_norm_(self.value_net.parameters(), max_norm=1.0)
-                return v_loss
+                return v_loss.item(), get_flat_grad_from(self.value_net.parameters()).cpu().numpy()
 
-            def c_closure():
-                self.cost_optimizer.zero_grad()
+            def c_closure(flat_params):
+                set_flat_params_to(self.cost_net, torch.tensor(flat_params))
+                for param in self.cost_net.parameters():
+                    if param.grad is not None:
+                        param.grad.data.fill_(0)
                 c_pred = self.cost_net(states)
                 c_loss = self.loss_fn(c_pred, cost_returns)
                 for param in self.cost_net.parameters():
@@ -444,10 +476,18 @@ class CPOMeta:
                 c_loss.backward()
                 # gradient clipping for stability
                 torch.nn.utils.clip_grad_norm_(self.cost_net.parameters(), max_norm=1.0)
-                return c_loss
+                return c_loss.item(), get_flat_grad_from(self.cost_net.parameters()).cpu().numpy()
+            
+            flat_params, _, opt_info = scipy.optimize.fmin_l_bfgs_b(r_closure,
+                                                            get_flat_params_from(self.value_net).detach().cpu().numpy(),
+                                                            maxiter=self.args.bfgs_iter_num)
+            set_flat_params_to(self.value_net, torch.tensor(flat_params))
 
-            self.value_optimizer.step(r_closure)
-            self.cost_optimizer.step(c_closure)
+            flat_params, _, opt_info = scipy.optimize.fmin_l_bfgs_b(c_closure,
+                                                            get_flat_params_from(self.cost_net).detach().cpu().numpy(),
+                                                            maxiter=self.args.bfgs_iter_num)
+            set_flat_params_to(self.cost_net, torch.tensor(flat_params))
+            
         else:
             self.value_optimizer.zero_grad()
             reward_value_loss.backward()
@@ -466,14 +506,21 @@ class CPOMeta:
 
         """define the loss function for TRPO"""
 
-        def get_loss(volatile=False, advantage=False):
+        def get_reward_loss(volatile=False):
             with torch.set_grad_enabled(not volatile):
                 log_probs = policy.get_log_prob(states, actions)
-                action_loss = -advantage * torch.exp(log_probs - fixed_log_probs)
+                action_loss = -reward_advantages * torch.exp(log_probs - fixed_log_probs)
+                return action_loss.mean()
+            
+        """define the cost loss function for TRPO"""
+        def get_cost_loss(volatile=False):
+            with torch.set_grad_enabled(not volatile):
+                log_probs = policy.get_log_prob(states, actions)
+                action_loss = cost_advantages * torch.exp(log_probs - fixed_log_probs)
                 return action_loss.mean()
 
-        reward_loss = get_loss(advantage=reward_advantages)
-        cost_loss = get_loss(advantage=-cost_advantages)
+        reward_loss = get_reward_loss()
+        cost_loss = get_cost_loss()
 
         """Compute gradient of loss"""
         grads = torch.autograd.grad(
@@ -534,8 +581,12 @@ class CPOMeta:
         meta_correction = 1 + x_gradients * loss_gradients
 
         prev_params = get_flat_params_from(policy)
-        new_params = prev_params + step
 
+        expected_reward_improve = -loss_reward_grad.dot(step)
+        expected_cost_improve = -loss_cost_grad.dot(step)
+
+        _, new_params = self.line_search(policy, get_reward_loss, get_cost_loss, prev_params, step,
+                                              expected_reward_improve, expected_cost_improve)
         set_flat_params_to(self.local_policy, new_params)
 
         if self.args.anneal:
@@ -543,13 +594,12 @@ class CPOMeta:
 
         return meta_correction, {"reward_value_loss":reward_value_loss.item(),
                                  "cost_value_loss":cost_value_loss.item(),
-                                 "estimated_constraint": constraint_value[0].item(),
+                                 "constraint_value": constraint_value[0].item(),
                                  "max_constraint": self.args.max_constraint,}
 
     def project_step(self, batch, meta_step):
         ''''
         Additionally project the final gradient to the intersection of the safe set
-        Not currently used
         '''
         states = (
             torch.from_numpy(np.stack(batch.state)).to(self.dtype).to(self.device)
@@ -593,18 +643,9 @@ class CPOMeta:
 
         try:
             (step,) = self.projection(a, b, meta_step)
+            return step
         except:
             return torch.zeros(a.numel())
-        print(
-            "projecting...  b: ",
-            b,
-            "projection mean: ",
-            abs(step).mean(),
-            "projection norm: ",
-            torch.norm(step),
-        )
-
-        return step
 
     def meta_test(self):
         '''
@@ -620,8 +661,8 @@ class CPOMeta:
 
             t1 = time.time()
             prev_params = get_flat_params_from(self.meta_policy)
-            step, _ = self.update(memory.sample())
-            success, new_params, step = self.meta_line_search(
+            step = self.update(memory.sample(), step_only=True)
+            success, new_params = self.meta_line_search(
                 prev_params, memory.sample(), step
             )
             t2 = time.time()
@@ -719,6 +760,8 @@ class CPOMeta:
 
             avg_reward_value_loss = 0
             avg_cost_value_loss = 0
+            avg_constraint_value = 0
+            avg_max_constraint = 0
 
             # Collect samples
             for local_iter in range(self.args.env_num):
@@ -731,6 +774,8 @@ class CPOMeta:
                 meta_correction, critic_loss = self.update(memory.sample(), meta_update=True)
                 avg_reward_value_loss += critic_loss["reward_value_loss"]
                 avg_cost_value_loss += critic_loss["cost_value_loss"]
+                avg_constraint_value += critic_loss["constraint_value"]
+                avg_max_constraint += critic_loss["max_constraint"]
                 t3 = time.time()
                 update_time += t3 - t2
 
@@ -762,20 +807,20 @@ class CPOMeta:
                 costs = (
                     torch.from_numpy(np.stack(local_memory.sample().cost))
                     .to(self.dtype)
-                    .to(self.device)
                 )
                 masks = (
                     torch.from_numpy(np.stack(local_memory.sample().mask))
                     .to(self.dtype)
-                    .to(self.device)
                 )
 
                 avg_reward += (np.sum(rewards) / rewards.shape[0]) * self.args.time_horizon / self.args.env_num
-                avg_cost += estimate_constraint_value(costs, masks, self.args.gamma, self.device)[0].to(torch.device("cpu")) / self.args.env_num
+                avg_cost += estimate_constraint_value(costs, masks, self.args.gamma, torch.device("cpu"))[0] / self.args.env_num
 
+            meta_step = meta_update_sum / self.args.env_num
+            update_step = self.project_step(memory.sample(), meta_step)
 
             prev_params = get_flat_params_from(self.meta_policy)
-            new_params = prev_params + meta_update_sum / self.args.env_num
+            new_params = prev_params + update_step
             set_flat_params_to(self.meta_policy, new_params)
 
             env_avg_reward.append(avg_reward)
@@ -786,6 +831,8 @@ class CPOMeta:
             self.writer.add_scalar("Training/costs", avg_cost, i_iter)
             self.writer.add_scalar("CriticLoss/reward_value_loss", avg_reward_value_loss / self.args.env_num, i_iter)
             self.writer.add_scalar("CriticLoss/cost_value_loss", avg_cost_value_loss / self.args.env_num, i_iter)
+            self.writer.add_scalar("CriticLoss/constraint_value", avg_constraint_value / self.args.env_num, i_iter)
+            self.writer.add_scalar("CriticLoss/max_constraint", avg_max_constraint / self.args.env_num, i_iter)
 
             print(
                 "{}\tT_sample {:.4f}  T_update {:.4f}\tC_avg/iter {:.2f}  Test_C_avg {:.2f}\tR_avg {:.2f}\tTest_R_avg {:.2f}".format(
