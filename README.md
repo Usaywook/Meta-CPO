@@ -33,9 +33,9 @@ python main.py --env-name SafetyPointStbutton
 ```
 ## Note
 The following error may arise
-
-**Please consider re-formulating your problem so that it is always solvable or increasing the number of solver iterations.**
-
+```
+Please consider re-formulating your problem so that it is always solvable or increasing the number of solver iterations.
+```
 This is attributed to the insolvable CPO problem that is natural since CPO sometimes does not have a solution where naive TRPO problem to the cost will be utilized.
 
 

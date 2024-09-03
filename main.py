@@ -91,8 +91,6 @@ def main_loop():
             value_net,
             cost_net,
             args,
-            args.dtype,
-            args.device,
             running_state=running_state,
             num_threads=args.num_threads,
         )
@@ -119,13 +117,11 @@ def main_loop():
                 policy_net,
                 value_net,
                 cost_net,
+                writer,
                 args,
-                args.dtype,
-                args.device,
                 running_state=running_state,
                 num_threads=args.num_threads,
             )
-            algo.train_CPOMeta(writer, save_info_obj)
-
+            algo.train_CPOMeta(save_info_obj)
 
 main_loop()
