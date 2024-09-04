@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import random
 import time
 import scipy
 import torch.nn as nn
@@ -37,7 +38,8 @@ def collect_trajectory(
     if queue is not None:
         # this is to apply different stochasity
         # in replicate of main process
-        torch.manual_seed(seed + pid)
+        rn = random.randint(100, 1_000_000)
+        torch.manual_seed(seed + rn)
 
     while num_steps < min_batch_size:
         state, info = env.reset(seed=seed)
@@ -645,7 +647,7 @@ class CPOMeta:
             (step,) = self.projection(a, b, meta_step)
             return step
         except:
-            return torch.zeros(a.numel())
+            return torch.zeros(a.numel()).to(self.device)
 
     def meta_test(self):
         '''
@@ -817,10 +819,10 @@ class CPOMeta:
                 avg_cost += estimate_constraint_value(costs, masks, self.args.gamma, torch.device("cpu"))[0] / self.args.env_num
 
             meta_step = meta_update_sum / self.args.env_num
-            update_step = self.project_step(memory.sample(), meta_step)
+            meta_step = self.project_step(memory.sample(), meta_step)
 
             prev_params = get_flat_params_from(self.meta_policy)
-            new_params = prev_params + update_step
+            new_params = prev_params + self.args.policy_lr * meta_step
             set_flat_params_to(self.meta_policy, new_params)
 
             env_avg_reward.append(avg_reward)
